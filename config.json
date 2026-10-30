@@ -1,0 +1,10 @@
+{
+  "paths": {
+    "acadExe": "D:\\cad\\AutoCAD 2021\\acad.exe",
+    "accoreconsoleExe": "D:\\cad\\AutoCAD 2021\\accoreconsole.exe",
+    "cadJsonDll": "D:\\cad\\AutoCAD 2021\\CadJsonPlugin.dll",
+    "revitExe": "D:\\Revit 2022\\Revit.exe",
+    "requestDir": "%USERPROFILE%\\Documents\\Marvis\\ai-modeling",
+    "dwgOutputDir": "%TEMP%\\arch-bim-out"
+  }
+}

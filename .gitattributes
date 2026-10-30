@@ -1,0 +1,8 @@
+* text=auto
+
+*.ps1 text eol=crlf
+*.scr text eol=crlf
+*.bat text eol=crlf
+*.dwg binary
+*.rvt binary
+*.ifc text eol=lf

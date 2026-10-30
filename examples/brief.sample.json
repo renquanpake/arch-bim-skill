@@ -1,0 +1,36 @@
+{
+  "project": {
+    "name": "demo-house",
+    "unit": "mm",
+    "floorHeight": 3000,
+    "roofElevation": 3000
+  },
+  "rooms": [
+    {"name": "living", "outline": [[0, 0], [6000, 0], [6000, 4000], [0, 4000]], "floorThickness": 150},
+    {"name": "bedroom", "outline": [[6000, 0], [12000, 0], [12000, 4000], [6000, 4000]], "floorThickness": 150}
+  ],
+  "walls": [
+    {"id": "W1", "start": [0, 0], "end": [12000, 0], "thickness": 240, "height": 3000,
+     "openings": [
+       {"type": "window", "startX": 3000, "width": 1200, "height": 1500, "sill": 900},
+       {"type": "window", "startX": 7500, "width": 1200, "height": 1500, "sill": 900}
+     ]},
+    {"id": "W2", "start": [0, 0], "end": [0, 8000], "thickness": 240, "height": 3000},
+    {"id": "W3", "start": [0, 8000], "end": [12000, 8000], "thickness": 240, "height": 3000},
+    {"id": "W4", "start": [12000, 8000], "end": [12000, 0], "thickness": 240, "height": 3000},
+    {"id": "W5", "start": [6000, 0], "end": [6000, 8000], "thickness": 120, "height": 3000,
+     "openings": [
+       {"type": "door", "startX": 2400, "width": 900, "height": 2100, "sill": 0}
+     ]}
+  ],
+  "doors": [],
+  "windows": [],
+  "columns": [
+    {"id": "C1", "basePoint": [6000, 0], "width": 400, "depth": 400, "height": 3000},
+    {"id": "C2", "basePoint": [6000, 8000], "width": 400, "depth": 400, "height": 3000}
+  ],
+  "beams": [
+    {"id": "B1", "start": [6000, 0], "end": [6000, 8000], "width": 300, "height": 500}
+  ],
+  "roof": {"type": "gable", "thickness": 120, "height": 1500, "overhang": 300}
+}

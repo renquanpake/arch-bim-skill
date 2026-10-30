@@ -1,0 +1,35 @@
+{
+  "project": {
+    "name": "auto-layout-sample",
+    "unit": "m",
+    "floorHeight": 3.0,
+    "floors": 1,
+    "buildingType": "residential"
+  },
+  "footprint": {
+    "width": 12.0,
+    "depth": 10.0
+  },
+  "entranceRoom": "hall",
+  "roof": {
+    "type": "gable",
+    "thickness": 0.12,
+    "height": 1.5,
+    "overhang": 0.3
+  },
+  "rooms": [
+    { "id": "hall",  "name": "门厅",   "type": "hall",    "floor": 0, "targetArea": 12.0 },
+    { "id": "living","name": "客厅",   "type": "living",  "floor": 0, "targetArea": 30.0, "preferredSide": "left" },
+    { "id": "dining","name": "餐厅",   "type": "dining",  "floor": 0, "targetArea": 18.0 },
+    { "id": "kitchen","name": "厨房",  "type": "kitchen", "floor": 0, "targetArea": 10.0 },
+    { "id": "bed1",  "name": "主卧",   "type": "bedroom", "floor": 0, "targetArea": 16.0 },
+    { "id": "bed2",  "name": "次卧",   "type": "bedroom", "floor": 0, "targetArea": 12.0 },
+    { "id": "bath",  "name": "卫生间", "type": "bathroom","floor": 0, "targetArea": 5.0 },
+    { "id": "wc",    "name": "公卫",   "type": "wc",      "floor": 0, "targetArea": 4.0 }
+  ],
+  "connections": [
+    { "roomA": "living", "roomB": "dining" },
+    { "roomA": "dining", "roomB": "kitchen" }
+  ],
+  "stairs": []
+}

@@ -1,0 +1,7 @@
+{
+  "fixtures": {
+    "intent.sample": "634b4bab378602794bfb7b0899d67b96de8155df4615b279038dadb80fc4ab10",
+    "brief.sample": "9967541499711eb25a2160a909ad807124324e93bbd749612fe40ba85840baac",
+    "intent.sample_elev_true": "bc9f5a0f7b53b0eb0ac68b749025061582073bb0380306447300458c5b97a70d"
+  }
+}

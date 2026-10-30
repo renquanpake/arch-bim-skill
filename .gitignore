@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.mypy_cache/
+.pytest_cache/
+
+# arch-bim-skill 运行产物 / 中间态
+headless/logs/
+headless/results/
+headless/revit/
+headless/*.log
+headless/result*.json
+headless/three-story-test.json
+*.result.json
+*.done
+
+# AutoCAD 锁文件与备份
+*.dwl
+*.dwl2
+*.bak
+*.sv$
+
+# 本地环境
+.env
+.env.*
