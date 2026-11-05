@@ -16,11 +16,11 @@ AIGC:
 
 # arch-bim-skill — 建筑协同建模
 
-管线：口述 → `brief.json` → `brief_to_cad.py` → `request.json` → `CadJsonPlugin`（AutoCAD）/ `RevitAddin`；产物 3D 模型 DWG、2D 平面 DWG、回执（默认轮询 `cad-result.json`，headless 驱动 `<请求基名>.result.json`）。技能只管转换/布局/合规/无头，插件在 `D:\cad\cad-ai-plugin\`。
+管线：口述 → `brief.json` → `brief_to_cad.py` → `request.json` → `CadJsonPlugin`（AutoCAD）/ `RevitAddin`；产物 3D 模型 DWG/RVT **默认落桌面**（`paths.modelOutputDir`）、2D 平面 DWG、回执（默认轮询 `cad-result.json`，headless 驱动 `<请求基名>.result.json`）。技能只管转换/布局/合规/无头，插件在 `D:\cad\cad-ai-plugin\`。
 
 ## 0. 环境自检
 
-1. 读 `config.json`：`paths.acadExe`/`paths.accoreconsoleExe`/`paths.cadJsonDll`/`paths.revitExe`/`paths.requestDir`/`paths.dwgOutputDir`，缺失或不存在先问用户，不盲跑。
+1. 读 `config.json`：`paths.acadExe`/`paths.accoreconsoleExe`/`paths.cadJsonDll`/`paths.revitExe`/`paths.requestDir`/`paths.modelOutputDir`/`paths.dwgOutputDir`，缺失或不存在先问用户，不盲跑。
 2. `python brief_to_cad.py --env-check` 校验路径与插件 DLL。
 3. `python scripts\smoke.py` 全绿再建模。
 
@@ -29,8 +29,10 @@ AIGC:
 1. 收集概念：房间、墙段、门窗、层高、屋顶类型（平顶/单坡/双坡）。
 2. 写 `brief.json`（§3），默认 `mm`，转换器换算米；或写 `intent.json` 交 `planner/spine_column.py` 出兼容 brief。
 3. 跑转换器（默认内置发单前校验，`--validate fix`；不通过则拦截不写 request）：
-   - `python brief_to_cad.py --brief brief.json --dwg "D:\models\demo.dwg"`
-   - `python brief_to_cad.py --intent intent.json --plan --dwg "D:\models\demo.dwg"`
+   - `python brief_to_cad.py --brief brief.json --rvt` → 存桌面 `<brief基名>.rvt`（Revit）
+   - `python brief_to_cad.py --brief brief.json --plan` → 存桌面 `<brief基名>.dwg`（AutoCAD）
+   - 指定路径才写死：`--rvt "D:\models\demo.rvt"` / `--dwg "D:\models\demo.dwg"`
+   - 目录可用 `paths.modelOutputDir` 或 `ARCHBIM_MODEL_OUTPUT_DIR` 覆盖（默认 `%USERPROFILE%\Desktop`）
 4. 合规审查：加 `--check`，产出 `violations.json`（与 request 同目录）：`summary` + `violations[]`（含 fixHint）；按 `fixHint` 回改重跑至 `passed == true` 或确认豁免。
 5. 触发建模并验证：acad.exe 已运行或 `Start-Process 'D:\cad\AutoCAD 2021\acad.exe' -ArgumentList '/nologo'`；读回执四判据全过：
    - 回执路径：默认轮询 `<paths.requestDir>\cad-result.json`（默认 `%USERPROFILE%\Documents\Marvis\ai-modeling\cad-result.json`）；`run-headless-all.ps1 -CadRequest` 驱动为 `<请求基名>.result.json`（`-CadResultDir` 定目录，缺省与请求同目录）；设了 `CADJSON_RESULT` 则写该路径；
@@ -38,6 +40,44 @@ AIGC:
    - `errors == []`（否则重试）；
    - `entityCount > 0`；
    - `savedTo` 非空（可能加 `_1`）。
+
+## 1A. 图纸数字化硬规则（从 PDF/扫描件建模，防认错六条）
+
+适用：从施工图（矢量 PDF）提取几何建模型。教训来源：线宽/厚度配对猜语义，把踏步梳、坡道线、标注刻度当墙，山墙原点错 1.5m，自评"视觉相似 76 分"而实际 42 分。
+
+1. **真值先行**：第一步强制产出 `truth.json`（尺寸链数字序列、总尺寸、轴号→位置、门窗表 编号|宽|高|窗台、设计墙厚集）。尺寸链/门窗表用 OCR+视觉读数字，读不清的标 `unclear` 不许猜。几何提取未拿到 truth.json 禁止开始。
+2. **标定禁循环**：比例 K 与原点必须由"气泡测得轴距"与"读到的尺寸链数字"逐项比对（容差 ±50mm），任一项超差即标定失败报错。原点轴号由轴号文字确认，不许用"总长假设+数字整齐"自证。
+3. **墙线准入 = 轴网对齐审查**：每条候选墙报告到最近轴线的偏差（应 ≈0 或 ±半厚）；偏差 >100mm 或厚度 ∉ truth 墙厚集 → 降级"嫌疑"，不进模型，进报告。
+4. **非墙黑名单（几何签名）**：踏步梳（≥6 条等距平行短线，间距 250-300）、标注刻度（垂直尺寸线的 45° 短线）、引线（斜线端触文字）、雨棚/坡道（轮廓外单线无配对）、填充线（45° 等距阵列）。命中即剔除，判例见 `docs/extraction-rules.md`。
+5. **洞口对账表**：每个洞口输出 实测宽|吸附编号|标称宽|Δ；Δ>±100mm 不进模型（宁缺勿滥）。门/窗定性优先用门弧半径+编号首字母（C/M/FM/YTM/DYM/BY），不许只看断口。
+6. **QA = 数字比对，禁视觉自评**：交付前跑 `python scripts\verify_geometry.py --truth truth.json --request request.json`，输出对账+diff；"渲染叠加图让模型打分"不算验证。对账表不干净不得声称完成，交付物必须含该表。
+
+## 1B. 落盘默认桌面 + Revit 致命错误
+
+- 新建模默认落盘 `paths.modelOutputDir`（默认 `%USERPROFILE%\Desktop`）：`--rvt` → `<基名>.rvt`，`--dwg`/不加 → `<基名>.dwg`。`headless/run-headless-all.ps1` 的 `-CadSaveDir`/`-RevitSaveDir` 未指定时同样取该目录。
+- `request.savePath` 优先级最高（`CADJSON_SAVE`/`REVITJSON_SAVE` 仅在 savePath 为空时兜底）。要让文件落桌面，必须让 savePath 指向桌面——只改启动器兜底无效。
+- **"不能生成墙（cannot generate wall）"是致命错误**：插件事务中断 → 弹模态错误框 → 私有桌面的按钮点击（1003/6/1）关不掉 → 10 分钟超时。判别：result `errors` 有 4 条即失败，0 条即成功（墙重叠警告是噪音，可忽略）。建模前必须清洗这 5 类几何：
+  1. 洞口宽度 ≥ 墙长（2099 墙配 2100 窗）→ 收窄至墙长-120 并居中；
+  2. 洞口距墙端 < 40mm → 夹住偏移；
+  3. 薄短墙整段嵌在厚墙带内（100 垛落在 200 墙里）→ 删；
+  4. 短墙垂直穿越长墙（十字 join）→ 删；
+  5. 平行微缝墙（间隙 < (t1+t2)/2+60）→ 合成一条并转移洞口。
+- **北向扩展区不许拍脑袋裁**：提取墙带的 y 超过轴网最大值 ≠ 噪声。先回查 PDF 原始厚线（`w>=0.6`）：厚线存在即为真实体量（本项目北侧外廊延伸到轴网外 ~6.7m，真实北界 y≈20017 而非 13300）。误裁会把楼板从 21291mm 缩到 15374mm，且"不能生成墙"风险同步上升。
+- 验证方式：模型墙端点与 PDF 线段做最近距离比对，>200mm 的端点逐条解释清楚，数量应在个位数（细线 `w=0.5~0.7` 的 ±200~300mm 属正常）。
+
+## 1C. Revit 精准建模硬规则（A02 实战沉淀，违反必错）
+
+适用：Revit 侧多层建模与修补。详细操作与代码见 `docs/revit-precision-playbook.md`。
+
+1. **改插件必重签**：任何一次重编 RevitAddin.dll 都会换签名，必须重签（证书 `CN=Marvis BIM`）并重新信任（机器级 `TrustedPublisher` + `Root`），`Get-AuthenticodeSignature` 状态非 `Valid` 禁止启动 Revit。TaskDialog 自动确认只是兜底，不能替代签名。
+2. **Level 前置 + 偏移公式**：`CreateLevels` 必须排在所有构件之前；墙底偏移 = `baseZ − Level.Elevation`（不是 baseZ）；`LevelFor(baseZ)` = **不高于 baseZ 的最高标高**，不许取"最接近"或"第一个"。
+3. **门窗读 elevation**：门窗标高 = `opening.elevation + opening.sill`，`elevation` 缺省才回落 Level 标高。否则 -1F 门窗整体错层。
+4. **楼板支持 holes**：楼梯洞口/竖井用内环 `CurveLoop` 与外环同一次 `Floor.Create`，不用布尔减法；`elevation` 语义统一为**板底**。
+5. **禁 rebuild 修补**：修补只走 `patch`（按 ID/名称改属性或几何）或 `deleteNames`（先 dry-run 出待删清单与数量，核对后执行）。v2 因 rebuild 清场漏删，墙 250→500 段整模报废。每次修补前后各出一份分层统计，差值必须等于预期变更量，不符立刻停。
+6. **构件名可寻址**：带楼层前缀（`-1F_W_A_250`/`1F_D_1021`），否则 deleteNames 无从下手。
+7. **纯矢量 PDF 无文字层**：走线段几何提取（`page.get_drawings()` 按线宽分层），换算 `1 pt = 24.948 mm`，先减原点再乘系数；拿不到的尺寸用线段间距/轴网气泡反推并在 truth.json 标 `derived:true`。无 truth.json 禁止开工。
+8. **验收三件套缺一不算交付**：分层 report（每层 墙/门/窗/板/楼梯级数）+ 轴测图 + 剖面图，且必须过 `verify_geometry.py` 数字对账；禁"视觉相似度打分"结案。
+9. **交付版本干净**：版本后缀只准 `_v1/_v2/_v3`，禁止把 Revit 自动备份 `.0001/.0004` 当交付物；过程版本归档到 `02_过程版本`，桌面不留中间版本。
 
 ## 2. 构件映射表
 
@@ -162,6 +202,7 @@ D:\cad\cad-ai-plugin\        # 插件本体
 | GitHub 生态调研（pyRevit/IFC） | `docs/github-research.md` |
 | SolidWorks 自动化 skill 对比 | `docs/solidworks-skill-comparison.md` |
 | 精度保障（golden/props/reconcile） | `docs/precision.md` |
+| **Revit 精准建模实操（签名/Level/门窗/开洞/禁rebuild/矢量PDF/验收）** | `docs/revit-precision-playbook.md`（建模前必读） |
 | 3D/2D/IFC 协同出图 | `docs/dual-output.md` |
 | IFC 导出 | `python ifc_export.py request.json out.ifc`（含真洞口/门窗/Pset/面积） |
 | 发单前校验规则 | `docs/preflight.md` |
@@ -182,7 +223,7 @@ D:\cad\cad-ai-plugin\        # 插件本体
 
 - Python 3.8+。核心管线（转换/布局/合规/无头驱动）仅标准库；IFC 导出（`ifc_export.py`）额外依赖 `numpy` 与 `ifcopenshell`。
 - AutoCAD 2021 + CadJsonPlugin（`D:\cad\AutoCAD 2021\CadJsonPlugin.dll`，部署见 `D:\cad\cad-ai-plugin\README.md`）。
-- 默认路径 `%USERPROFILE%\Documents\Marvis\ai-modeling\cad-request.json`/`cad-result.json`（`paths.requestDir` 可覆盖；headless 驱动产物为 `<请求基名>.result.json`）。
+- 默认路径 `%USERPROFILE%\Documents\Marvis\ai-modeling\cad-request.json`/`cad-result.json`（`paths.requestDir` 可覆盖；headless 驱动产物为 `<请求基名>.result.json`）；模型默认落 `%USERPROFILE%\Desktop`（`paths.modelOutputDir` 可覆盖）。
 - Revit 2022（`D:\Revit 2022\`）+ RevitAddin（`D:\cad\cad-ai-plugin\RevitAddin` → `C:\ProgramData\Autodesk\Revit\Addins\2022\`）。
 - 扩展字段"写入即兼容"（旧插件忽略未知键）；Revit request 单位 mm 内部换算英尺；半无头依赖 GUI+轮询 Timer，批量走真无头，勿并发写同一请求文件。
 - 退出码：0 成功；1 意图/合规预校验不通过、环境路径缺失；2 输入解析错误或配置缺失（统一友好报错，不吐 traceback；输入 JSON 容忍 UTF-8 BOM）。

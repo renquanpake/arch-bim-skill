@@ -117,7 +117,10 @@ public class HiddenDesktop {
       return true;
     }, IntPtr.Zero);
     foreach (var d in dialogs) {
+      // 依次尝试常见确认按钮: 1003(总是加载) / 6(IDYES) / 1(IDOK) / 1002(否/取消)
       SendMessage(d, 0x0466 /*TDM_CLICK_BUTTON*/, (IntPtr)1003, IntPtr.Zero);
+      SendMessage(d, 0x0466, (IntPtr)6, IntPtr.Zero);
+      SendMessage(d, 0x0466, (IntPtr)1, IntPtr.Zero);
       clicked++;
     }
     return clicked;

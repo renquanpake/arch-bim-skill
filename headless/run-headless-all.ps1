@@ -22,13 +22,13 @@
     -CadRequestDir    <目录>，自动收集 *.json（排除 *.result.json / *.done）
     -CadInputDwg      <种子dwg>，默认 headless\seed.dwg（CADJSON_RUN 按 XData 清场重建模）
     -CadResultDir     <目录>，默认与请求同目录，产物 <基名>.result.json
-    -CadSaveDir       <目录>，默认与请求同目录；仅请求无 savePath 时经 CADJSON_SAVE 兜底
+    -CadSaveDir       <目录>，默认 paths.modelOutputDir（桌面）；仅请求无 savePath 时经 CADJSON_SAVE 兜底
     # ---- Revit 任务来源 ----
     -RevitRequest     <请求json>，字符串数组，可多次传
     -RevitRequestDir  <目录>，自动收集 *.json（排除 *.result.json / *.done）
     -RevitRvtFiles    <rvt路径>，与请求一一对应；只给 1 个则所有请求复用
     -RevitResultDir   <目录>，默认与请求同目录
-    -RevitSaveDir     <目录>，默认与请求同目录
+    -RevitSaveDir     <目录>，默认 paths.modelOutputDir（桌面）
     # ---- 通用 ----
     -TimeoutSec       每任务超时秒数（默认 600；Revit 冷启动需 >= 300）
     -LogFile          <日志路径>，默认 headless\run-headless-all.log
@@ -74,17 +74,23 @@ $Accore   = "D:\cad\AutoCAD 2021\accoreconsole.exe"
 $CadDll   = "D:\cad\AutoCAD 2021\CadJsonPlugin.dll"
 $ScrPath  = Join-Path $ScriptRoot "run.scr"
 $RevitExe = "D:\Revit 2022\Revit.exe"
+$ModelOutputDir = ""
 if (Test-Path $ConfigFile) {
   try {
     $cfg = Get-Content $ConfigFile -Raw -Encoding UTF8 | ConvertFrom-Json
     if ($cfg.paths.accoreconsoleExe) { $Accore = [Environment]::ExpandEnvironmentVariables([string]$cfg.paths.accoreconsoleExe) }
     if ($cfg.paths.cadJsonDll)       { $CadDll = [Environment]::ExpandEnvironmentVariables([string]$cfg.paths.cadJsonDll) }
     if ($cfg.paths.revitExe)         { $RevitExe = [Environment]::ExpandEnvironmentVariables([string]$cfg.paths.revitExe) }
+    if ($cfg.paths.modelOutputDir)   { $ModelOutputDir = [Environment]::ExpandEnvironmentVariables([string]$cfg.paths.modelOutputDir) }
   } catch {
     Write-Output "config.json 解析失败，使用内置默认路径"
   }
 } else {
   Write-Output "未找到 config.json，使用内置默认路径"
+}
+if (-not $ModelOutputDir) { $ModelOutputDir = [Environment]::GetFolderPath("Desktop") }
+if ($ModelOutputDir -and -not (Test-Path $ModelOutputDir)) {
+  New-Item -ItemType Directory -Path $ModelOutputDir -Force | Out-Null
 }
 if ($AccoreExe)     { $Accore   = [Environment]::ExpandEnvironmentVariables($AccoreExe) }
 if ($CadDll)        { $CadDll   = [Environment]::ExpandEnvironmentVariables($CadDll) }
@@ -211,7 +217,8 @@ if ($Mode -eq "cad" -or $Mode -eq "all") {
     $resDir = if ($CadResultDir) { $CadResultDir } else { [IO.Path]::GetDirectoryName($req) }
     $result = Join-Path $resDir ($base + ".result.json")
     $save   = $null
-    if ($CadSaveDir) { $save = Join-Path $CadSaveDir ($base + ".dwg") }
+    $saveDir = if ($CadSaveDir) { $CadSaveDir } else { $ModelOutputDir }
+    if ($saveDir) { $save = Join-Path $saveDir ($base + ".dwg") }
     if ($Resume -and (Test-ResultOk $result)) { $skipCount++; Write-Log ("CAD 跳过(已成功): " + $result); continue }
     if (Invoke-CadTask -Request $req -Result $result -Save $save -InputDwg $CadInputDwg) { $okCount++ }
     else { $failCount++; $failList += $req }
@@ -244,7 +251,8 @@ if ($Mode -eq "revit" -or $Mode -eq "all") {
     $resDir = if ($RevitResultDir) { $RevitResultDir } else { [IO.Path]::GetDirectoryName($req) }
     $result = Join-Path $resDir ($base + ".result.json")
     $save   = $null
-    if ($RevitSaveDir) { $save = Join-Path $RevitSaveDir ($base + ".rvt") }
+    $saveDir = if ($RevitSaveDir) { $RevitSaveDir } else { $ModelOutputDir }
+    if ($saveDir) { $save = Join-Path $saveDir ($base + ".rvt") }
     if ($Resume -and (Test-ResultOk $result)) { $skipCount++; Write-Log ("Revit 跳过(已成功): " + $result); continue }
     if (Invoke-RevitTask -Request $req -Result $result -Save $save -Rvt $rvt) { $okCount++ }
     else { $failCount++; $failList += $req }

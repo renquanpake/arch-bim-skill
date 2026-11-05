@@ -102,6 +102,19 @@ LAYER_STAIR = "A-STAIR"
 # 扩展能力标记（用于摘要提示哪些字段需要插件扩展）
 EXTENDED_TYPES = {"roof", "door", "window", "polyline2d", "text2d", "box"}
 
+# --rvt 不带值时表示"自动落盘到默认输出目录"
+AUTO_SAVE = "__auto__"
+
+
+def default_output_dir():
+    """模型落盘目录：优先 paths.modelOutputDir（默认桌面），再退 dwgOutputDir、系统临时目录。"""
+    if cfg is not None:
+        for key in ("paths.modelOutputDir", "paths.dwgOutputDir"):
+            path = cfg.resolve(cfg.get(key) or "")
+            if path:
+                return path
+    return tempfile.gettempdir()
+
 
 def parse_args(argv=None):
     p = argparse.ArgumentParser(description="brief JSON → CAD request.json 转换器（含 intent 布局与规范审查）")
@@ -112,7 +125,9 @@ def parse_args(argv=None):
     p.add_argument("--request", default=DEFAULT_REQUEST,
                    help="输出 request.json 路径（默认插件轮询路径）")
     p.add_argument("--dwg", default="",
-                   help="DWG 落盘路径（写入 savePath）；缺省为配置 paths.dwgOutputDir，无配置时用系统临时目录")
+                   help="DWG 落盘路径（写入 savePath）；不提则用 paths.modelOutputDir（默认桌面）/<brief基名>.dwg")
+    p.add_argument("--rvt", nargs="?", const=AUTO_SAVE, default="",
+                   help="Revit 落盘（写 savePath，.rvt）：给路径用该路径；只写 --rvt 则存 paths.modelOutputDir/<基名>.rvt")
     p.add_argument("--sheets", action="store_true",
                    help="生成施工图套图（图框+标题栏+真比例排版，输出纯 2D 图纸 DWG）")
     p.add_argument("--sheet-size", choices=("A1", "A2", "A3"), default="A1", help="图幅")
@@ -159,6 +174,7 @@ ENV_CHECK_KEYS = (
     ("cadJsonDll", "paths.cadJsonDll"),
     ("revitExe", "paths.revitExe"),
     ("requestDir", "paths.requestDir"),
+    ("modelOutputDir", "paths.modelOutputDir"),
     ("dwgOutputDir", "paths.dwgOutputDir"),
 )
 
@@ -169,7 +185,7 @@ def env_check():
         print("[brief_to_cad] 未找到 archbim_config 模块，集中配置未落地，无法执行环境检查。")
         return 2
     print("[brief_to_cad] 环境检查")
-    out_dir = cfg.resolve(cfg.get("paths.dwgOutputDir") or "")
+    out_dir = default_output_dir()
     if out_dir:
         os.makedirs(out_dir, exist_ok=True)
     for label, key in ENV_CHECK_KEYS:
@@ -1111,16 +1127,17 @@ def _main(argv=None):
             print("  · " + n)
 
     source_path = args.intent if is_intent else args.brief
-    if args.dwg:
+    if args.rvt and args.rvt != AUTO_SAVE:
+        dwg_path = args.rvt.replace("\\", "/")
+    elif args.dwg:
         dwg_path = args.dwg.replace("\\", "/")
     else:
         base = os.path.splitext(os.path.basename(source_path))[0] if source_path != "-" else "model"
-        # 集中配置的输出目录；cfg 缺失时退到系统临时目录，绝不写入技能目录
-        out_dir = cfg.resolve(cfg.get("paths.dwgOutputDir")) if cfg is not None else ""
-        if not out_dir:
-            out_dir = tempfile.gettempdir()
+        # 集中配置的输出目录（默认桌面）；cfg 缺失时退到系统临时目录，绝不写入技能目录
+        out_dir = default_output_dir()
         os.makedirs(out_dir, exist_ok=True)
-        dwg_path = os.path.join(out_dir, base + ".dwg").replace("\\", "/")
+        ext = ".rvt" if args.rvt == AUTO_SAVE else ".dwg"
+        dwg_path = os.path.join(out_dir, base + ext).replace("\\", "/")
 
     request, unit = convert(brief, dwg_path, with_plan=args.plan, cli_unit=args.unit,
                             plan_sheet=args.plan_sheet, with_elevations=args.elevations,
@@ -1232,7 +1249,7 @@ def _main(argv=None):
     if extended_used:
         print("  扩展字段 : %s 需插件扩展（docs/plugin-extension.md）" % ", ".join(extended_used))
     print("  请求文件 : %s" % args.request)
-    print("  DWG 路径 : %s" % dwg_path)
+    print("  落盘路径 : %s" % dwg_path)
     if args.plan_sheet:
         print("  2D 平面  : 已生成（每层一张，网格排版）")
     else:

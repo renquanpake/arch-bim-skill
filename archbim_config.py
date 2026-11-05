@@ -18,7 +18,8 @@ DEFAULTS = {
         "cadJsonDll": "D:\\cad\\AutoCAD 2021\\CadJsonPlugin.dll",
         "revitExe": "D:\\Revit 2022\\Revit.exe",
         "requestDir": "%USERPROFILE%\\Documents\\Marvis\\ai-modeling",
-        "dwgOutputDir": "%TEMP%\\arch-bim-out",
+        "modelOutputDir": "%USERPROFILE%\\Desktop",
+        "dwgOutputDir": "%USERPROFILE%\\Desktop",
     }
 }
 
@@ -28,6 +29,7 @@ ENV_KEYS = {
     "cadJsonDll": "ARCHBIM_CADJSON_DLL",
     "revitExe": "ARCHBIM_REVIT_EXE",
     "requestDir": "ARCHBIM_REQUEST_DIR",
+    "modelOutputDir": "ARCHBIM_MODEL_OUTPUT_DIR",
     "dwgOutputDir": "ARCHBIM_DWG_OUTPUT_DIR",
 }
 
