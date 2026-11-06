@@ -19,7 +19,11 @@ param(
   [string]$RevitExe = "D:\Revit 2022\Revit.exe",
   [string]$DesktopName = "MarvisHidden",
   [int]$TimeoutSec = 300,
-  [int]$PollSec = 3
+  [int]$PollSec = 3,
+  # 额外环境变量（如 MARVIS_GRID_REQ / MARVIS_GRID_OUT）；子进程经 CreateProcess 继承父进程环境
+  [hashtable]$Env = @{},
+  # 完成信号文件（如 RevitGrid 的 out 日志）：出现且含 DONE 即视为动作完成，无需 JSON status
+  [string]$ResultSignal = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -160,8 +164,39 @@ if ($Save) { $env:REVITJSON_SAVE = $Save }
 
 if (Test-Path $Result) { Remove-Item $Result -Force -ErrorAction SilentlyContinue }
 
+# 注入额外环境变量（CreateProcess 的 lpEnvironment 为 IntPtr.Zero → 子进程继承父环境）
+foreach ($k in $Env.Keys) { Set-Item -Path "Env:$k" -Value ([string]$Env[$k]) }
+if ($Env.Count -gt 0) { Write-Output ("[hidden] 注入环境变量: " + (($Env.Keys | ForEach-Object { "$_=$(($Env[$_]))" }) -join ', ')) }
+
 $pid2 = [HiddenDesktop]::Launch($RevitExe, $cmdLine, $DesktopName)
 Write-Output "[hidden] Revit 已启动于私有桌面 '$DesktopName'，pid=$pid2"
+
+# 可选：等待自定义完成信号（如 RevitGrid 的 out 日志出现 DONE）；命中后补写 JSON result 供原有判定收尾
+if ($ResultSignal) {
+  Write-Output "[hidden] 等待信号文件: $ResultSignal"
+  $sigDeadline = (Get-Date).AddSeconds($TimeoutSec)
+  $sigHit = $false
+  while ((Get-Date) -lt $sigDeadline) {
+    $null = [HiddenDesktop]::DismissTaskDialogs()
+    if (Test-Path $ResultSignal) {
+      if (Select-String -Path $ResultSignal -Pattern 'DONE' -Quiet -ErrorAction SilentlyContinue) { $sigHit = $true; break }
+    }
+    if (-not (Get-Process -Id $pid2 -ErrorAction SilentlyContinue)) { break }
+    Start-Sleep -Seconds $PollSec
+  }
+  if ($sigHit) {
+    Write-Output "[hidden] 信号命中: $ResultSignal"
+    if (-not (Test-Path $Result)) {
+      '{"status":"ok","signal":true}' | Set-Content -Path $Result -Encoding UTF8
+    }
+  } else {
+    Write-Output "[hidden] 信号未命中（超时或进程退出）: $ResultSignal"
+    # 直接落 error result，避免后续主循环再等一轮 TimeoutSec
+    if (-not (Test-Path $Result)) {
+      '{"status":"error","signal":false,"reason":"signal_timeout"}' | Set-Content -Path $Result -Encoding UTF8
+    }
+  }
+}
 
 $deadline = (Get-Date).AddSeconds($TimeoutSec)
 $leaked = 0

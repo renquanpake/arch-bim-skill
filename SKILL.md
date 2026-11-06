@@ -42,6 +42,7 @@ AIGC:
    - `savedTo` 非空（可能加 `_1`）。
 
 ## 1A. 图纸数字化硬规则（从 PDF/扫描件建模，防认错六条）
+> 全链路实操（PDF 矢量 → DXF → 链接 Revit → 精度验证，含 A02 实测基准 0.34mm/42.5mm 选型）见 `docs/pdf-cad-revit-pipeline.md`。
 
 适用：从施工图（矢量 PDF）提取几何建模型。教训来源：线宽/厚度配对猜语义，把踏步梳、坡道线、标注刻度当墙，山墙原点错 1.5m，自评"视觉相似 76 分"而实际 42 分。
 
@@ -78,6 +79,26 @@ AIGC:
 7. **纯矢量 PDF 无文字层**：走线段几何提取（`page.get_drawings()` 按线宽分层），换算 `1 pt = 24.948 mm`，先减原点再乘系数；拿不到的尺寸用线段间距/轴网气泡反推并在 truth.json 标 `derived:true`。无 truth.json 禁止开工。
 8. **验收三件套缺一不算交付**：分层 report（每层 墙/门/窗/板/楼梯级数）+ 轴测图 + 剖面图，且必须过 `verify_geometry.py` 数字对账；禁"视觉相似度打分"结案。
 9. **交付版本干净**：版本后缀只准 `_v1/_v2/_v3`，禁止把 Revit 自动备份 `.0001/.0004` 当交付物；过程版本归档到 `02_过程版本`，桌面不留中间版本。
+
+## 1D. Revit 无头启动铁律（违反即返工，详见 `docs/revit-headless-playbook.md`）
+
+**任务需要 Revit，就必然走 `headless\launch-revit-hidden.ps1`（私有桌面 `MarvisHidden`）；裸 `Start-Process Revit.exe` 一律禁止。**
+
+| # | 规则 | 判据 |
+|---|---|---|
+| R1 | 禁止裸启动 Revit | 出现 `Start-Process "D:\Revit 2022\Revit.exe"` 即违规；`-WindowStyle Hidden` 也无效（splash 照弹） |
+| R2 | dll 必须签名 `Valid` | `Get-AuthenticodeSignature` 非 `Valid` 禁止启动；重编译=换签名=弹窗，必重签并机器级信任（`CN=Marvis BIM`） |
+| R3 | 一个插件承载所有动作 | 禁止每个任务新建 `Addins\2022\RevitXXX\`；动作走 request 的 `action` 分支（现有 12 个目录即反面教材） |
+| R4 | 必须自动退出 | 写完 out/result → `SC_CLOSE`；残留进程启动器兜底 kill |
+| R5 | 改 json 即生效，不重启 Revit | `Idling` 比对 `LastWriteTime` 换动作重跑；"要重启 Revit 才生效"属设计缺陷 |
+
+- **RevitGrid 协议**：`MARVIS_GRID_REQ` / `MARVIS_GRID_OUT` 环境变量 + 首次 `Idling` 执行，out 末行 `DONE` 为完成信号；action 分支 `build/clean/diag2/floor/iso/views/dump/grid/restoregrid/gridhead/gridbubble`。
+- **启动器调用**（`-Env` 注入环境变量、`-ResultSignal` 等 DONE 信号，均已支持）：
+  ```powershell
+  .\headless\launch-revit-hidden.ps1 -Document $rvt -Request $req -Result $resJson `
+      -Env @{ MARVIS_GRID_REQ=$req; MARVIS_GRID_OUT=$out } -ResultSignal $out -TimeoutSec 600
+  ```
+- **验收四件**：out 含 `DONE` → 导出 PNG 非空 → 日志 `用户桌面可见窗口峰值=0` → 无 Revit 残留进程。缺一条不许说"完成"。
 
 ## 2. 构件映射表
 
@@ -203,6 +224,8 @@ D:\cad\cad-ai-plugin\        # 插件本体
 | SolidWorks 自动化 skill 对比 | `docs/solidworks-skill-comparison.md` |
 | 精度保障（golden/props/reconcile） | `docs/precision.md` |
 | **Revit 精准建模实操（签名/Level/门窗/开洞/禁rebuild/矢量PDF/验收）** | `docs/revit-precision-playbook.md`（建模前必读） |
+| **Revit 无头启动铁律与 A02 SOP（禁裸启动/私有桌面/签名/自动退出/免重启/action 分支）** | `docs/revit-headless-playbook.md`（**启动 Revit 前必读**） |
+| **PDF矢量→CAD→链接Revit→精度验证 全链路（K=24.948/图层语义/双线配对/链接撑大包围盒/四条路线实测）** | `docs/pdf-cad-revit-pipeline.md`（拿到 PDF 图纸时必读） |
 | 3D/2D/IFC 协同出图 | `docs/dual-output.md` |
 | IFC 导出 | `python ifc_export.py request.json out.ifc`（含真洞口/门窗/Pset/面积） |
 | 发单前校验规则 | `docs/preflight.md` |
